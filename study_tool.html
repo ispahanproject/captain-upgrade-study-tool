@@ -617,12 +617,13 @@ mark {
 .viewer-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
-  font-size: 0.9em;
-  line-height: 1.8;
+  padding: 24px 28px;
+  font-size: 0.95em;
+  line-height: 2.0;
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', monospace;
+  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  letter-spacing: 0.02em;
 }
 .viewer-content .vw-hl {
   background: #ffe066;
@@ -1476,6 +1477,47 @@ let viewerMatches = [];
 let viewerMatchIdx = -1;
 let viewerRawText = '';
 
+// PDF抽出テキストの段落整形
+const _S = /^(第\s*[０-９0-9][０-９0-9\s]*[章条節款項]|（.{1,15}）$|[一二三四五六七八九十]+[\s　]|[①-⑳]|[\(（]\s*[0-9０-９]|[ⅠⅡⅢⅣⅤⅰⅱⅲⅳⅴ][．\.\s]|[０-９0-9]+[\s　]*[．\.、]|[０-９0-9]+[－\-][０-９0-9]|別表|付表|附\s*則|備考|[イロハニホヘトチリヌ][．\.\s）\)])/;
+function cleanDocText(text) {
+  text = text.replace(/\r\n/g, '\n').replace(/\f/g, '');
+  const lines = text.split('\n');
+  // Pass 1: 行単位で結合。構造マーカー行は新段落にする
+  let blocks = [], c = '';
+  for (const raw of lines) {
+    const ln = raw.trim();
+    if (!ln) { if (c) { blocks.push(c); c = ''; } continue; }
+    if (_S.test(ln) && c) { blocks.push(c); c = ln; }
+    else if (!c) { c = ln; }
+    else { c += ln; }
+  }
+  if (c) blocks.push(c);
+  // Pass 2: 1文字断片の結合
+  let ch = true;
+  while (ch) { ch = false;
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i].length !== 1) continue;
+      const x = blocks[i];
+      if (/^[一二三四五六七八九十]$/.test(x) && i+1 < blocks.length) { blocks[i+1] = x+blocks[i+1]; }
+      else if (i > 0) { blocks[i-1] += x; }
+      else if (i+1 < blocks.length) { blocks[i+1] = x+blocks[i+1]; }
+      else continue;
+      blocks.splice(i, 1); ch = true; break;
+    }
+  }
+  // Pass 3: 文中途切れ段落の結合（空行による偽分離を修復）
+  const mg = [];
+  for (const b of blocks) {
+    if (!mg.length) { mg.push(b); continue; }
+    const p = mg[mg.length-1];
+    const pe = /[。．」』】）\)]$/.test(p);
+    const cn = _S.test(b);
+    if (!pe && !cn && /[ぁ-んァ-ヶー、]$/.test(p) && p.length >= 5) { mg[mg.length-1] = p + b; }
+    else { mg.push(b); }
+  }
+  return mg.join('\n\n');
+}
+
 // 通達等の表示順序: 機長等認定・審査要領→細則→運航規程審査要領→細則
 const TSUUTATSU_ORDER = [1, 2, 0, 3];
 
@@ -1629,7 +1671,7 @@ function toggleViewerToc() {
 
 function openViewerDoc(idx) {
   viewerCurrentDoc = idx;
-  viewerRawText = DOCS[idx].text;
+  viewerRawText = cleanDocText(DOCS[idx].text);
   viewerMatches = [];
   viewerMatchIdx = -1;
   document.getElementById('viewerSearchInput').value = '';
