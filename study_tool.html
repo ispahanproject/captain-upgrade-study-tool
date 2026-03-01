@@ -617,6 +617,7 @@ mark {
 .viewer-mode-toggle { display: flex; gap: 2px; }
 .viewer-mode-active { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
 .viewer-text-tools { display: flex; gap: 4px; align-items: center; }
+.viewer-search-tools { display: flex; gap: 4px; align-items: center; }
 .viewer-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text2); gap: 8px; }
 .viewer-content {
   flex: 1;
@@ -1065,10 +1066,12 @@ mark {
         <div class="viewer-text-tools" id="viewerTextTools" style="display:none;">
           <button class="viewer-btn" onclick="changeViewerFont(-1)" title="文字縮小">A-</button>
           <button class="viewer-btn" onclick="changeViewerFont(1)" title="文字拡大">A+</button>
+        </div>
+        <div class="viewer-search-tools" id="viewerSearchTools" style="display:none;">
           <input type="text" id="viewerSearchInput" placeholder="検索..." onkeyup="if(event.key==='Enter')viewerSearch()" style="width:120px;">
           <button class="viewer-btn" onclick="viewerSearch()">検索</button>
-          <button class="viewer-btn" onclick="viewerSearchNav(-1)">&#9650;</button>
-          <button class="viewer-btn" onclick="viewerSearchNav(1)">&#9660;</button>
+          <button class="viewer-btn viewer-text-only-nav" onclick="viewerSearchNav(-1)">&#9650;</button>
+          <button class="viewer-btn viewer-text-only-nav" onclick="viewerSearchNav(1)">&#9660;</button>
           <span class="viewer-search-info" id="viewerSearchInfo"></span>
         </div>
       </div>
@@ -1717,12 +1720,18 @@ function switchViewerMode(mode) {
   const pdfEl = document.getElementById('viewerPdf');
   const textEl = document.getElementById('viewerContent');
   const textTools = document.getElementById('viewerTextTools');
+  const searchTools = document.getElementById('viewerSearchTools');
   const btnPdf = document.getElementById('btnModePdf');
   const btnText = document.getElementById('btnModeText');
   btnPdf.classList.toggle('viewer-mode-active', mode === 'pdf');
   btnText.classList.toggle('viewer-mode-active', mode === 'text');
   if (viewerCurrentDoc < 0) return;
   const doc = DOCS[viewerCurrentDoc];
+  // Search tools are always visible; text-only nav buttons toggle
+  searchTools.style.display = 'flex';
+  document.querySelectorAll('.viewer-text-only-nav').forEach(el => {
+    el.style.display = mode === 'text' ? '' : 'none';
+  });
   if (mode === 'pdf') {
     textEl.style.display = 'none';
     textTools.style.display = 'none';
@@ -1826,6 +1835,22 @@ function renderViewerContent(text, searchTerm) {
 function viewerSearch() {
   const q = document.getElementById('viewerSearchInput').value.trim();
   if (viewerCurrentDoc < 0) return;
+  if (viewerMode === 'pdf') {
+    // Use Chrome PDF viewer's built-in search via URL fragment
+    const doc = DOCS[viewerCurrentDoc];
+    if (!doc.pdf) return;
+    const pdfEl = document.getElementById('viewerPdf');
+    const base = encodeURIComponent(doc.pdf);
+    if (q) {
+      pdfEl.src = base + '#search=' + encodeURIComponent(q) + '&phrase=true';
+      document.getElementById('viewerSearchInfo').textContent = 'PDF内検索中';
+    } else {
+      pdfEl.src = base;
+      document.getElementById('viewerSearchInfo').textContent = '';
+    }
+    return;
+  }
+  // Text mode search
   viewerMatchIdx = -1;
   if (!q) {
     renderViewerContent(viewerRawText);
@@ -1866,10 +1891,6 @@ function openInViewer(docIdx, searchTerm) {
   document.querySelectorAll('.tab-btn').forEach(el => {
     if (el.textContent === '原文閲覧') el.classList.add('active');
   });
-  // If called with searchTerm, force text mode for searching
-  if (searchTerm) {
-    viewerMode = 'text';
-  }
   openViewerDoc(docIdx);
   if (searchTerm) {
     document.getElementById('viewerSearchInput').value = searchTerm;
